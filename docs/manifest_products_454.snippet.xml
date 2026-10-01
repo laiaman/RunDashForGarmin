@@ -1,0 +1,21 @@
+<!--
+  目标：API ≥ 5.2 的 454×454 机型（已剔除 Approach S70 47mm / Descent Mk3i 51mm）。
+  用法：
+  1. SDK Manager 安装对应 Device Support
+  2. 运行: python3 scripts/list_454_devices.py
+  3. 用本机真实目录名核对下表 id 后，复制到 manifest.xml 的 <iq:products>
+  常见 id 可能因 SDK 版本略有差异，以 list 脚本输出为准。
+-->
+<iq:product id="fr970" />
+<iq:product id="fr965" />
+<!-- 以下 id 请用 scripts/list_454_devices.py 输出核对后启用 -->
+<!-- <iq:product id="fr570_47mm" /> -->
+<!-- <iq:product id="venu3" /> -->
+<!-- <iq:product id="venu4_45mm" /> -->
+<!-- <iq:product id="fenix847mm" /> -->
+<!-- <iq:product id="fenix851mm" /> -->
+<!-- <iq:product id="fenix8pro47mm" /> -->
+<!-- <iq:product id="fenix8pro51mm" /> -->
+<!-- <iq:product id="epix2pro51mm" /> -->
+<!-- <iq:product id="d2mach2" /> -->
+<!-- <iq:product id="d2mach2pro" /> -->

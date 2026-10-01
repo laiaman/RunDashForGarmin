@@ -1,0 +1,5 @@
+<properties>
+    <property id="targetPaceSecPerKm" type="number">300</property>
+    <property id="maxHeartRate" type="number">180</property>
+    <property id="showPacer" type="boolean">true</property>
+</properties>

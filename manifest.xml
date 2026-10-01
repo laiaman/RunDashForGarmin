@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        id="fed01791ca6d43dd9b916164f2b4593d"
+        type="datafield"
+        name="@Strings.AppName"
+        entry="RunDash970App"
+        launcherIcon="@Drawables.LauncherIcon"
+        version="1.0.0"
+        minSdkVersion="5.2.2">
+        <iq:products>
+            <iq:product id="fr970" />
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="UserProfile" />
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>zhs</iq:language>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>

@@ -1,0 +1,11 @@
+<settings>
+    <setting propertyKey="@Properties.targetPaceSecPerKm" title="@Strings.TargetPaceTitle" prompt="@Strings.TargetPacePrompt">
+        <settingConfig type="numeric" min="150" max="900" />
+    </setting>
+    <setting propertyKey="@Properties.maxHeartRate" title="@Strings.MaxHeartRateTitle" prompt="@Strings.MaxHeartRatePrompt">
+        <settingConfig type="numeric" min="120" max="230" />
+    </setting>
+    <setting propertyKey="@Properties.showPacer" title="@Strings.ShowPacerTitle">
+        <settingConfig type="boolean" />
+    </setting>
+</settings>

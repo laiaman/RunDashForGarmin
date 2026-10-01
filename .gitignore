@@ -1,0 +1,12 @@
+bin/
+.secrets/
+*.prg
+*.iq
+*.der
+*.pem
+*.key
+.DS_Store
+
+# Local publishing docs (do not upload)
+docs/PUBLISH_CHECKLIST.md
+docs/STORE_PUBLISHING_CN.md

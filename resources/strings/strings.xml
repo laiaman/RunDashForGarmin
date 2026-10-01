@@ -1,0 +1,8 @@
+<strings>
+    <string id="AppName">RunDash 970</string>
+    <string id="TargetPaceTitle">Target pace (sec/km)</string>
+    <string id="TargetPacePrompt">Example: 255 = 4:15/km</string>
+    <string id="MaxHeartRateTitle">Max heart rate (fallback)</string>
+    <string id="MaxHeartRatePrompt">Used only when watch user HR zones are unavailable</string>
+    <string id="ShowPacerTitle">Show virtual pacer</string>
+</strings>
