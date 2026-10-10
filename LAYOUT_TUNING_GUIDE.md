@@ -30,21 +30,22 @@
 
 - `LAYOUT_*_X`、`LAYOUT_*_Y`：文字和图形位置。
 - `LAYOUT_FONT_*`：按分组统一调字号（见下方字体分组表）。
-- `LAYOUT_TEXT_COLOR`、`LAYOUT_LINE_COLOR`：颜色。
-- `LAYOUT_ZONE_*`：五段 Zone bar 颜色。
-- `LAYOUT_ZONE_CIRCLE_*`：中心 Zone 圆圈位置和半径。
+- `LAYOUT_TEXT_COLOR`、`LAYOUT_LINE_COLOR`：颜色（v4 起分隔线为中性灰 `0x3A3A3A`）。
+- `LAYOUT_LABEL_COLOR`、`LAYOUT_CLOCK_COLOR`、`LAYOUT_KM_DIM_COLOR`：标签、顶部时钟、km 单位的颜色（v5 方案 A，2026-10-08：`0xE0E0E0` / `0xD0D0D0` / `0xB0B0B0`）。
+- `LAYOUT_ZONE_COLOR_1..5`：五段 Zone bar 的亮色；`LAYOUT_ZONE_DIM_1..5`：已经过的段使用的暗色；`LAYOUT_ZONE_COLOR_IDLE`：未到达的段和无心率胶囊的底色。
+- `LAYOUT_ZONE_TEXT_DY`：Zone 胶囊内文字的垂直微调（默认 0）。
 - `LAYOUT_HLINE_*` / `LAYOUT_VLINE_*`：横线与竖线；共用 `LAYOUT_LINE_COLOR`、`LAYOUT_LINE_WIDTH`，端点全部独立。
-- `LAYOUT_BATTERY_*`：电量位置、圆半径、刷新间隔与变色阈值/颜色。
+- `LAYOUT_BATTERY_*`：电池图标位置、刷新间隔与变色阈值/颜色。
 
 ### 字体分组（同组改一处即可）
 
 | 变量 | 默认值 | 覆盖范围 |
 |------|--------|----------|
-| `LAYOUT_FONT_LABEL` | `Graphics.FONT_XTINY` | 标签：HR / Cad / T / D / L / C / A / lap |
+| `LAYOUT_FONT_LABEL` | `Graphics.FONT_XTINY` | 标签（旧版本或小号矢量字体加载失败时的回退）：HR / CAD / TIME / DIST / LAP / NOW / AVG。v5 起标签使用 `RobotoCondensedBold` 矢量字体（三档 24 / 22 / 20 px，见下方“v5 标签”小节），加载失败时依次回退到 `RobotoCondensedRegular`、此字体 |
 | `LAYOUT_FONT_ELAPSED_DISTANCE` | `Graphics.FONT_LARGE` | 累计时间数值 + 总距离数值 |
 | `LAYOUT_FONT_CLOCK` | `Graphics.FONT_XTINY` | 顶部时钟 |
-| `LAYOUT_FONT_ZONE` | `Graphics.FONT_XTINY` | 心率区间圆圈内数字 |
-| `LAYOUT_FONT_BATTERY` | `Graphics.FONT_XTINY` | 底部电量 |
+| `LAYOUT_FONT_ZONE` | `Graphics.FONT_XTINY` | 心率区间胶囊内的 1 位小数文字 |
+| `LAYOUT_FONT_BATTERY` | `Graphics.FONT_XTINY` | 电量百分比的回退字体（优先使用 22px 矢量字体） |
 | `LAYOUT_FONT_VALUE` | `Graphics.FONT_SMALL` | 其他数值：HR值 / Cad值 / L·C·A 配速 / Lap Info 时间与距离 |
 
 ### 佳明官方字体常量（已核对）
@@ -110,7 +111,7 @@ hidden var LAYOUT_FONT_VALUE = Graphics.FONT_TINY;
 | `LAYOUT_FONT_ELAPSED_DISTANCE`（累计时间 / 总距离数值） | `NUMBER_MEDIUM` → 不够空再降 `MILD`；够空可试 `HOT` | 距离若显示含字母单位（如 `km`），改回 `FONT_TINY`/`SMALL` |
 | `LAYOUT_FONT_VALUE`（HR / Cad / L·C·A / Lap Info 数值） | 先 `NUMBER_MILD`，再视空间 `MEDIUM` | 一屏字段多，慎用 `HOT`/`THAI_HOT` |
 | `LAYOUT_FONT_CLOCK` | `NUMBER_MILD` 或 `NUMBER_MEDIUM` | 仅 `HH:MM`，适合数字字体 |
-| `LAYOUT_FONT_ZONE` | 通常继续 `FONT_XTINY`～`SMALL` | 圆圈内空间小，数字字体外边距大，易溢出 |
+| `LAYOUT_FONT_ZONE` | 通常继续 `FONT_XTINY`～`SMALL` | 胶囊只有 56×30，数字字体外边距大，易溢出；换字体后需同时检查 `LAYOUT_ZONE_TEXT_DY` |
 | `LAYOUT_FONT_BATTERY` | `NUMBER_MILD` 或普通 `TINY` | `85%` 一般可用；确认 `--` 显示正常 |
 | `LAYOUT_FONT_LABEL` | 只用 `FONT_XTINY`～`FONT_LARGE` | **禁止** `FONT_NUMBER_*` |
 
@@ -138,12 +139,14 @@ hidden var LAYOUT_FONT_BATTERY = Graphics.FONT_XTINY;
 
 ### 标签/数值 X 坐标分离
 
-将每个显示元素的**标签**（如 HR、Cad、T、D、L、C、A、lap）与**数据数值**拆成独立 X 坐标，可分别移动。Y 仍由各行 `LAYOUT_*_Y` 控制。
+将每个显示元素的**标签**与**数据数值**拆成独立 X 坐标，可分别移动。Y 仍由各行 `LAYOUT_*_Y` 控制。
+
+> v4（2026-10-07）标签文字已改为 `HR` / `CAD` / `TIME` / `DIST` / `LAP` / `NOW` / `AVG`，并删除了底部单圈行原有的 `T` / `lap` / `D` 三个标签，只保留一个居中的 `LAP`。下表中的变量名沿用旧命名，默认值是 v4 之前的旧值，仅用于说明每个变量的作用；实际默认值以 `source/RunDash970View.mc` 顶部为准。
 
 | 变量 | 默认值 | 用途 |
 |------|--------|------|
 | **颜色** | | |
-| `LAYOUT_LABEL_COLOR` | `COLOR_WHITE` | 标签颜色（可调暗以区分标签和数值） |
+| `LAYOUT_LABEL_COLOR` | `0xE0E0E0` | 标签颜色（v5 方案 A 起为近白；v4 为 `0x8C8C8C`） |
 | **HR / Cad 行** | | |
 | `LAYOUT_HR_CAD_LABEL_Y` | 75 | **仅** "HR" / "Cad" 标签共用 Y（不与数值、Zone 共用） |
 | `LAYOUT_HR_LABEL_X` | 100 | "HR" 标签 X 坐标 |
@@ -178,21 +181,57 @@ hidden var LAYOUT_FONT_BATTERY = Graphics.FONT_XTINY;
 | `LAYOUT_AVERAGE_PACE_VALUE_X` | 250 | 平均配速数值 X 坐标 |
 | `LAYOUT_AVERAGE_PACE_VALUE_Y` | 222 | 平均配速数值 Y（独立） |
 | **合并单圈信息行** | | |
-| `LAYOUT_LAP_INFO_Y` | 385 | 单圈时间/距离数值 Y |
-| `LAYOUT_LAP_INFO_T_X` | 90 | 左侧 "T" 标签 X 坐标 |
-| `LAYOUT_LAP_INFO_T_Y` | 385 | 左侧 "T" 标签 Y（独立） |
-| `LAYOUT_LAP_INFO_TIME_X` | 152 | 单圈时间数值 X 坐标 |
-| `LAYOUT_LAP_INFO_LAP_X` | 227 | 中间 "lap" 文字 X 坐标 |
-| `LAYOUT_LAP_INFO_LAP_Y` | 385 | 中间 "lap" 文字 Y（独立） |
-| `LAYOUT_LAP_INFO_DIST_X` | 300 | 单圈距离数值 X 坐标 |
-| `LAYOUT_LAP_INFO_D_X` | 362 | 右侧 "D" 标签 X 坐标 |
-| `LAYOUT_LAP_INFO_D_Y` | 385 | 右侧 "D" 标签 Y（独立） |
+| `LAYOUT_LAP_INFO_Y` | 390 | 单圈时间/距离数值 Y（`mFontValueSmall`，墨迹约 373–406） |
+| `LAYOUT_LAP_INFO_TIME_RIGHT` | 215 | 单圈时间右边缘 X（短竖线 227 左侧 12px） |
+| `LAYOUT_LAP_INFO_DIST_LEFT` | 239 | 单圈距离左边缘 X（短竖线 227 右侧 12px） |
+| `LAYOUT_LAP_INFO_KM_GAP` | 4 | 单圈距离与 km 的间距，km 跟随数值实测宽度 |
+| `LAYOUT_LAP_INFO_KM_Y` | 400 | km 与数字下沿对齐（v5 起为 400，v4 为 401；颜色为 `LAYOUT_KM_DIM_COLOR`） |
+| `LAYOUT_BATTERY_TEXT_SIZE` | 22 | 电量百分比矢量字号（px），矢量字体不可用时回退 `LAYOUT_FONT_BATTERY` |
+
+### v5 标签：加粗、提亮（方案 A，2026-10-08）
+
+2026-10-08 用户确认 v5 方案 A。起因是真机测试中，v4 的标签（`RobotoRegular` 14–17 px、`0x8C8C8C`）在强光和暗光下都看不清。本次只改标签的字体、字号、颜色和位置；数值、区间胶囊、区间条、分隔线、电池图标的形状和坐标不变。上方表格沿用旧变量名与旧默认值，v5 的实际默认值以本小节和 `source/RunDash970View.mc` 顶部为准。
+
+**字体与字号**：`mFontLabelTop`、`mFontLabelSide`、`mFontLabelSmall` 三个标签字体的 face 列表由 `["RobotoRegular", "RobotoCondensedRegular"]` 改为 `["RobotoCondensedBold", "RobotoCondensedRegular"]`，全部加载失败时回退 `LAYOUT_FONT_LABEL`（`FONT_XTINY`）。
+
+| 变量 | v4 → v5 | 对应字体 | 使用它的标签 |
+|------|---------|----------|--------------|
+| `LAYOUT_LABEL_SIZE_TOP` | 17 → 24 | `mFontLabelTop` | HR、CAD |
+| `LAYOUT_LABEL_SIZE_SIDE` | 15 → 22 | `mFontLabelSide` | TIME、DIST，以及右栏 LAP / NOW / AVG |
+| `LAYOUT_LABEL_SIZE_SMALL` | 14 → 20 | `mFontLabelSmall` | 底部 LAP、DIST 下方 km、单圈距离后的 km |
+
+右栏 LAP / NOW / AVG 标签原来使用 `mFontLabelSmall`，v5 起在 `drawPaceRow` 中改用 `mFontLabelSide`（22 px）。
+
+**颜色**：
+
+| 变量 | v4 → v5 | 说明 |
+|------|---------|------|
+| `LAYOUT_LABEL_COLOR` | `0x8C8C8C` → `0xE0E0E0` | 所有标签 |
+| `LAYOUT_CLOCK_COLOR` | `0xA0A0A0` → `0xD0D0D0` | 顶部时钟 |
+| `LAYOUT_KM_DIM_COLOR` | `0x555555` → `0xB0B0B0` | km 单位：DIST 下方的 km 与单圈距离后的 km 共用 |
+| `LAYOUT_BATTERY_COLOR_HIGH` | `0x8A8A8A` → `0xB0B0B0` | 电量不低于 50% |
+| `LAYOUT_BATTERY_COLOR_UNKNOWN` | `0x8A8A8A` → `0xB0B0B0` | 电量未知 |
+
+`LAYOUT_BATTERY_COLOR_MID`（`0xFFB000`）和 `LAYOUT_BATTERY_COLOR_LOW`（`0xFF1010`）不变。`LAYOUT_MUTED_COLOR`（`0x8A8A8A`）也未改，它只用于无心率时 Zone 胶囊内的 `-.-`。
+
+**位置**（未列出的标签坐标不变，例如 `LAYOUT_HR_LABEL_X` 90、`LAYOUT_TIME_LABEL_X/Y` 44 / 146、`LAYOUT_DIST_LABEL_X/Y` 44 / 252、`LAYOUT_PACE_LABEL_X` 394）：
+
+| 变量 | v4 → v5 | 说明 |
+|------|---------|------|
+| `LAYOUT_HR_CAD_LABEL_Y` | 86 → 83 | HR / CAD 标签共用 Y |
+| `LAYOUT_CAD_LABEL_X` | 362 → 349 | CAD 由居中改为左对齐（`LAYOUT_JUSTIFY_LEFT`）；24 px 的 CAD 如果仍居中，会贴到 CAD 数值右缘（约 344） |
+| `LAYOUT_DIST_KM_Y` | 272 → 274 | DIST 下方的 km |
+| `LAYOUT_PACE_LABEL_DY` | 15 → 12 | 右栏标签 Y = 数值 Y − 12，即 150 / 220 / 299，大写字母顶端与配速数字顶端平齐 |
+| `LAYOUT_LAP_LABEL_Y` | 364 → 362 | 底部 LAP 标签 |
+| `LAYOUT_LAP_INFO_KM_Y` | 401 → 400 | 单圈距离后的 km |
+
+单圈距离后的 km 现在通过 `drawTextAt2(dc, lapKmX, LAYOUT_LAP_INFO_KM_Y, "km", LAYOUT_KM_DIM_COLOR, mFontLabelSmall, LAYOUT_JUSTIFY_LEFT)` 绘制，与 DIST 下方的 km 同色，不再走 `drawLabel`。
 
 ### 绘制函数说明
 
 | 函数 | 使用的字体 | 用途 |
 |------|-----------|------|
-| `drawLabel(dc, x, y, text)` | `LAYOUT_FONT_LABEL` | 绘制标签 |
+| `drawLabel(dc, x, y, text, font, justify)` | 传入字体（标签用 `mFontLabelTop` / `Side` / `Small`） | 绘制标签，颜色固定为 `LAYOUT_LABEL_COLOR` |
 | `drawValue(dc, x, y, text)` | `LAYOUT_FONT_VALUE` | 绘制其他数据数值 |
 | `drawTextAt(dc, x, y, text, color, font)` | 传入字体 | 时钟 / Zone / 电量 / 累计时间与总距离 |
 | `drawDebugBox(dc, x, y, text, font)` | 传入字体 | 调试边界框（自动调用） |
@@ -208,7 +247,7 @@ hidden var LAYOUT_FONT_BATTERY = Graphics.FONT_XTINY;
 - `LAYOUT_CENTER_X = 227` 是圆屏中心。
 - 主屏文字使用 `Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER`，所以 X/Y 是文字中心点，不是左上角或 baseline。
 - `LAYOUT_FONT_*` 必须赋值为佳明官方 `Graphics.FONT_*` 常量（见上文「佳明官方字体常量」）；默认 `Graphics.FONT_XTINY`。改某一组后必须重新编译并截图检查。
-- 颜色使用十六进制 RGB，例如 `0xFFFFFF` 是白色，`0x006B3C` 是深绿色。
+- 颜色使用十六进制 RGB，例如 `0xFFFFFF` 是白色，`0x3A3A3A` 是分隔线使用的中性深灰。
 
 每轮只调整 4–8px。例如：
 
@@ -218,13 +257,13 @@ LAYOUT_LAP_TIME_Y = 279
 
 想向下移动时改成 `283` 或 `287`；想向上移动时改成 `275`。一次不要同时大幅修改很多行，否则无法判断是哪一项造成重叠。
 
-## 4. 增加或移动横线与圆圈
+## 4. 增加或移动横线、Zone 胶囊与电池图标
 
 所有分隔线共用：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `LAYOUT_LINE_COLOR` | `0x006B3C` | 线颜色（深绿） |
+| `LAYOUT_LINE_COLOR` | `0x3A3A3A` | 线颜色（中性灰；2026-10-07 用户确认 v4 由原深绿 `0x006B3C` 改为此值） |
 | `LAYOUT_LINE_WIDTH` | `2` | 线宽/粗细（像素），全部横线 + 竖线共用 |
 
 每条线的端点全部独立，互不影响。
@@ -235,12 +274,14 @@ LAYOUT_LAP_TIME_Y = 279
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `LAYOUT_VLINE_1_X` | 300 | 竖线 1 水平位置 |
-| `LAYOUT_VLINE_1_TOP` | 120 | 竖线 1 上端 Y |
-| `LAYOUT_VLINE_1_BOTTOM` | 340 | 竖线 1 下端 Y |
-| `LAYOUT_VLINE_2_X` | 154 | 竖线 2 水平位置 |
-| `LAYOUT_VLINE_2_TOP` | 120 | 竖线 2 上端 Y |
-| `LAYOUT_VLINE_2_BOTTOM` | 340 | 竖线 2 下端 Y |
+| `LAYOUT_VLINE_1_X` | 285 | 竖线 1 水平位置（右栏配速与左侧时间/距离的分界） |
+| `LAYOUT_VLINE_1_TOP` | 132 | 竖线 1 上端 Y（v4 由 120 下移，避开 Zone 条三角标记） |
+| `LAYOUT_VLINE_1_BOTTOM` | 349 | 竖线 1 下端 Y（与底部横线相接） |
+| `LAYOUT_VLINE_2_X` | 227 | 竖线 2 水平位置（v4 起是底部单圈区的短竖线） |
+| `LAYOUT_VLINE_2_TOP` | 374 | 竖线 2 上端 Y |
+| `LAYOUT_VLINE_2_BOTTOM` | 402 | 竖线 2 下端 Y（不再向下连到电量） |
+
+v4 分隔线布局：时钟下方的横线已删除；底部横线为 x 36→418、y 349，不再延伸到屏幕两侧边缘；左横线 x 30→285、y 232；右上横线 x 285→440、y 190；右下横线 x 285→440、y 270。实际数值以 `source/RunDash970View.mc` 顶部的 `LAYOUT_HLINE_*` / `LAYOUT_VLINE_*` 为准。
 
 调参示例：
 
@@ -254,57 +295,59 @@ hidden var LAYOUT_VLINE_2_TOP = 140;
 hidden var LAYOUT_VLINE_2_BOTTOM = 320;
 ```
 
-横线应放在两行文字之间，不能穿过文字中心。发布绘制顺序是：调试网格/安全圆/中心十字（仅 DEBUG）→ 分隔线（横线 + 竖线）→ Zone bar 和 Zone 圆圈 → 主屏文字 → SDK 实测文字框和锚点（仅 DEBUG）。
+横线应放在两行文字之间，不能穿过文字中心。发布绘制顺序是：调试网格/安全圆/中心十字（仅 DEBUG）→ 分隔线（横线 + 竖线）→ Zone bar、Zone 胶囊和电池图标 → 主屏文字 → SDK 实测文字框和锚点（仅 DEBUG）。
 
-Zone bar 由以下常量控制：
+Zone bar 由以下常量控制（v4：起点 x 42、顶端 y 105，共 5 段，每段宽 71、间隙 4、高 10、圆角 2，总宽 371）：
 
 - `LAYOUT_ZONE_BAR_X`
 - `LAYOUT_ZONE_BAR_Y`
 - `LAYOUT_ZONE_BAR_WIDTH`
 - `LAYOUT_ZONE_BAR_HEIGHT`
 
-中心绿色 Zone 圆圈由以下常量控制：
+Zone bar 的颜色规则：当前所在段用全亮色 `LAYOUT_ZONE_COLOR_1..5`；已经过的段用暗色 `LAYOUT_ZONE_DIM_1..5`；未到达的段用 `LAYOUT_ZONE_COLOR_IDLE`（`0x333333`）。区间内的位置由一个白色三角标记指示，无心率或区间低于 1.0 时不画三角。
 
-- `LAYOUT_ZONE_CIRCLE_X`
-- `LAYOUT_ZONE_CIRCLE_Y`
-- `LAYOUT_ZONE_CIRCLE_RADIUS`
+#### Zone 胶囊（替代原来的绿色圆圈）
 
-圆圈内只显示短文本区间数字或 `-`，不要放入 `ZONE` 等长文本。
+v4 把 HR 与 CAD 之间的圆圈改成了胶囊：中心 (227, 72)，56×30，圆角 15，用 `fillRoundedRectangle` 填充。
 
-### 电量椭圆与变色（结构同心率区间圆）
+- 有心率时：填充当前区间色，文字为黑色。
+- 无心率时：填充 `0x333333`，文字为 `-.-`，颜色 `0x8A8A8A`。
+- 文字是区间小数，**截断**（不四舍五入）到 1 位小数，最大 `6.0`，例如 `2.97` 显示 `2.9`、`6.4` 显示 `6.0`。不要放入 `ZONE` 等长文本。
+- 原 `LAYOUT_ZONE_CIRCLE_*` 常量（含 `LAYOUT_ZONE_CIRCLE_COLOR`）已删除。
 
-电量文字居中画在椭圆内，中心：
+胶囊内文字的垂直位置不使用 `TEXT_JUSTIFY_VCENTER`（它按字体单元高度居中，数字字形会偏离胶囊中线），而是按字体 ascent 顶端定位。如果数字看起来偏上或偏下，只调一个常量：
 
-- `LAYOUT_BATTERY_CIRCLE_X`
-- `LAYOUT_BATTERY_CIRCLE_Y`
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LAYOUT_ZONE_TEXT_DY` | 0 | 胶囊文字垂直微调（像素）。正数向下，负数向上；每次 1–2 px |
 
-用 `dc.drawEllipse(x, y, a, b)`：`a` 为水平半径，`b` 为垂直半径（上下更窄）。
+```monkeyc
+// 数字偏上就加，偏下就减
+hidden var LAYOUT_ZONE_TEXT_DY = 1;
+```
 
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `LAYOUT_BATTERY_ELLIPSE_PAD_X` | 6 | 文字半宽之外的水平边距 |
-| `LAYOUT_BATTERY_ELLIPSE_PAD_Y` | 2 | 文字半高之外的垂直边距（贴合数字高度） |
-| `LAYOUT_BATTERY_ELLIPSE_A_MIN` | 22 | 水平半径下限 |
-| `LAYOUT_BATTERY_ELLIPSE_B_MIN` | 10 | 垂直半径下限 |
+胶囊内文字的背景色必须是 `Graphics.COLOR_TRANSPARENT`，否则会在胶囊上盖出黑色方框。
 
-实际半径：水平 `a` 固定按 `"100%"` 实测半宽 + `PAD_X` 预留（电量从 `5%` 到 `100%` 椭圆宽度不变）；垂直 `b = max(B_MIN, 当前文字半高+PAD_Y)`。想更扁就减小 `PAD_Y` / `B_MIN`。
+### 电池图标与变色（替代原来的电量椭圆）
 
-文字与椭圆颜色随电量百分比变化（`batteryColor()`）：
+v4 起底部电量不再画椭圆，改为电池图标 + 百分比文字：
+
+- 机身 28×14，圆角 3，笔宽 2；正极 3×6，贴在机身右侧并垂直居中。
+- 内部填充从机身左内侧 +3 开始，宽 `max(1, round(22 × 电量% / 100))`，高 8；电量未知或为 0 时不填充。
+- 图标、6 px 间隙和百分比文字作为一组，按文字实测宽度水平居中于 x 227，垂直中心 y 430；文字左对齐，电量未知时显示 `--`。
+- 图标和文字使用同一种颜色。
+- 原 `LAYOUT_BATTERY_ELLIPSE_*` 常量（`PAD_X` / `PAD_Y` / `A_MIN` / `B_MIN`）已删除，不要再按椭圆的方式调参。
+
+位置常量仍是 `LAYOUT_BATTERY_*` 这一组，具体名称与默认值以 `source/RunDash970View.mc` 顶部为准；想整体上移或下移，只改垂直中心那一个值。
+
+图标与文字颜色随电量百分比变化（`batteryColor()`）：
 
 | 条件 | 默认阈值 | 颜色变量 | 默认色 |
 |------|----------|----------|--------|
-| 电量未知（`--`） | — | `LAYOUT_BATTERY_COLOR_UNKNOWN` | 白 |
-| `>= LAYOUT_BATTERY_HIGH_PCT` | 50 | `LAYOUT_BATTERY_COLOR_HIGH` | 绿 `0x00B050` |
+| 电量未知（`--`） | — | `LAYOUT_BATTERY_COLOR_UNKNOWN` | 浅灰 `0xB0B0B0`（v5 起；v4 为 `0x8A8A8A`） |
+| `>= LAYOUT_BATTERY_HIGH_PCT` | 50 | `LAYOUT_BATTERY_COLOR_HIGH` | 浅灰 `0xB0B0B0`（v5 起；v4 为 `0x8A8A8A`） |
 | `>= LAYOUT_BATTERY_MID_PCT` | 20 | `LAYOUT_BATTERY_COLOR_MID` | 黄 `0xFFB000` |
 | `< MID` | — | `LAYOUT_BATTERY_COLOR_LOW` | 红 `0xFF1010` |
-
-调参示例：
-
-```monkeyc
-hidden var LAYOUT_BATTERY_ELLIPSE_PAD_X = 8;  // 左右更松
-hidden var LAYOUT_BATTERY_ELLIPSE_PAD_Y = 1;  // 上下更贴数字
-hidden var LAYOUT_BATTERY_ELLIPSE_B_MIN = 8;  // 更扁
-```
 
 电量约每 `LAYOUT_BATTERY_REFRESH_MS`（默认 60s）刷新一次。
 
@@ -435,17 +478,20 @@ Connect IQ **不会**在你保存 `.mc` 后自动刷新表盘。必须：
 
 - [ ] Current Time 出现且在圆屏安全区内。
 - [ ] HR 和 CAD 没有横向相碰。
+- [ ] 标签（HR / CAD / TIME / DIST / LAP / NOW / AVG / km）为加粗近白色，强光和暗光下都能一眼认出，并且不贴到相邻数值或圆屏边缘。
 - [ ] 五段彩色 Zone bar 出现。
-- [ ] 绿色圆圈内只有 `Z1`–`Z5` 或 `Z-`。
-- [ ] ELAPSED、TOTAL DIST、L、C、A、LAP TIME、LAP DIST 均出现。
-- [ ] BAT 显示 `BAT xx%` 或 `BAT --`。
+- [ ] Zone 胶囊（不是圆圈）内只有 1 位小数（如 `2.9`，最大 `6.0`）或 `-.-`，文字垂直居中，没有黑色方框底。
+- [ ] Zone bar 的当前段全亮、已过的段为暗色、未到达的段为灰色，白色三角位置正确。
+- [ ] 分隔线为中性灰，时钟下方没有横线。
+- [ ] ELAPSED、TOTAL DIST、LAP / NOW / AVG 配速、单圈时间（`M:SS`）、单圈距离均出现；总距离在第 1 公里内显示为 `0.85` 这类两位小数，不出现 `850m`。
+- [ ] 底部电池图标 + `xx%` 整组居中；电量未知时显示 `--` 且图标内不填充。
 - [ ] PACER 不出现。
 - [ ] PAUSED 不出现。
 - [ ] 横线不穿过任何文字。
 - [ ] 没有明显整块重叠、字符残留或圆屏边缘裁切。
 - [ ] Metrics 通过，编译 warning/error 均为 0。
 
-电量通过 `System.getSystemStats().battery` 获取并约每 60 秒刷新一次；首次没有可用值时显示 `BAT --`，不要要求它每帧变化。
+电量通过 `System.getSystemStats().battery` 获取并约每 60 秒刷新一次；首次没有可用值时显示 `--`（图标内不填充），不要要求它每帧变化。
 
 ## 10. 关闭 DEBUG 并做 release build
 
@@ -487,7 +533,7 @@ cp /private/tmp/RunDash970-fr970.previous.prg bin/RunDash970-fr970.prg
 每次反馈请同时提供：
 
 1. 截图路径或截图文件。
-2. 元素名称：例如 `LAP TIME`、`BAT`、`ZONE 圆圈`。
+2. 元素名称：例如 `LAP TIME`、`电池图标`、`ZONE 胶囊`。
 3. 方向：向上、向下、向左、向右，或“与哪一项重叠”。
 4. 像素建议：例如“`BAT` 向上 6px”或“分隔线向下 4px”。
 5. 是否开启了 `DEBUG_LAYOUT`。

@@ -54,7 +54,7 @@ def format_lap_time_ms(ms):
         return "--"
     mins = total // 60
     secs = total % 60
-    return f"{mins}.{secs:02d}"
+    return f"{mins}:{secs:02d}"
 
 
 def format_distance_meters(meters):
@@ -63,8 +63,6 @@ def format_distance_meters(meters):
     m = float(meters)
     if m < 0.0:
         return "--"
-    if m < 1000.0:
-        return f"{int(m)}m"
     return f"{m / 1000.0:.2f}"
 
 
@@ -171,6 +169,19 @@ def hr_zone(hr, max_hr):
     return hr_zone_index(hr_zone_value_from_max(hr, max_hr))
 
 
+def zone_pill_text(zone_value):
+    """区间胶囊文字：截断（不四舍五入）到 1 位小数，上限 6.0，无心率为 -.-。
+
+    镜像 v4 简报约定：((v * 10).toNumber() / 10.0).format("%.1f")。
+    """
+    if zone_value is None:
+        return "-.-"
+    v = float(zone_value)
+    if v > 6.0:
+        v = 6.0
+    return f"{int(v * 10) / 10.0:.1f}"
+
+
 def check(name, got, expected):
     if got != expected:
         raise AssertionError(f"{name}: got {got!r}, expected {expected!r}")
@@ -192,14 +203,15 @@ def main() -> int:
     check("dur 59s", format_duration_ms(59_000), "00:59")
     check("dur 61min", format_duration_ms(3_661_000), "1:01:01")
     check("dur null", format_duration_ms(None), "--:--")
-    check("lap time 5:12", format_lap_time_ms(312_000), "5.12")
-    check("lap time 0", format_lap_time_ms(0), "0.00")
-    check("lap time 65s", format_lap_time_ms(65_000), "1.05")
+    check("lap time 5:12", format_lap_time_ms(312_000), "5:12")
+    check("lap time 0", format_lap_time_ms(0), "0:00")
+    check("lap time 65s", format_lap_time_ms(65_000), "1:05")
     check("lap time null", format_lap_time_ms(None), "--")
 
     # Distance
-    check("dist 0", format_distance_meters(0), "0m")
-    check("dist 999", format_distance_meters(999), "999m")
+    check("dist 0", format_distance_meters(0), "0.00")
+    check("dist 850", format_distance_meters(850), "0.85")
+    check("dist 999", format_distance_meters(999), "1.00")
     check("dist 1000", format_distance_meters(1000), "1.00")
     check("dist 10k", format_distance_meters(10_000), "10.00")
     check("dist marathon", format_distance_meters(42_195), "42.20")
@@ -252,6 +264,15 @@ def main() -> int:
     check("idx 6.0", hr_zone_index(6.0), 5)
     check("fallback z3", hr_zone(135, 180), 3)
     check("fallback bad max", hr_zone(150, 0), 0)
+
+    # Zone pill text: truncate to 1 decimal (no rounding), cap at 6.0, no HR -> -.-
+    check("pill 2.97", zone_pill_text(2.97), "2.9")
+    check("pill 6.4", zone_pill_text(6.4), "6.0")
+    check("pill 6.0", zone_pill_text(6.0), "6.0")
+    check("pill 1.0", zone_pill_text(1.0), "1.0")
+    check("pill 3.05", zone_pill_text(3.05), "3.0")
+    check("pill null", zone_pill_text(None), "-.-")
+    check("pill from hr", zone_pill_text(hr_zone_value(130, sample)), "2.5")
 
     # Floating cadence-like display path: toNumber truncate semantics
     check("cadence float trunc", int(float(87.6)), 87)

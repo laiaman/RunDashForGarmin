@@ -1,5 +1,5 @@
 <strings>
-    <string id="AppName">RunDash 970</string>
+    <string id="AppName">RunDash</string>
     <string id="TargetPaceTitle">Target pace (sec/km)</string>
     <string id="TargetPacePrompt">Example: 255 = 4:15/km</string>
     <string id="MaxHeartRateTitle">Max heart rate (fallback)</string>

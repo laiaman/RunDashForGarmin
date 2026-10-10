@@ -46,7 +46,7 @@ module Metrics {
         return mins.format("%02d") + ":" + secs.format("%02d");
     }
 
-    // 单圈时间：M.SS，三位数字（如 5.12），不用 05:12。
+    // 单圈时间：M:SS（如 5:12），分钟不补零，不用 05:12。
     function formatLapTimeMs(ms) {
         if (ms == null) {
             return "--";
@@ -57,9 +57,10 @@ module Metrics {
         }
         var mins = (total / 60).toNumber();
         var secs = total % 60;
-        return mins.format("%d") + "." + secs.format("%02d");
+        return mins.format("%d") + ":" + secs.format("%02d");
     }
 
+    // 始终按公里、两位小数（如 0.85、1.20），不足 1000m 也不再输出 "850m"。
     function formatDistanceMeters(meters) {
         if (meters == null) {
             return "--";
@@ -67,9 +68,6 @@ module Metrics {
         var m = meters.toFloat();
         if (m < 0.0) {
             return "--";
-        }
-        if (m < 1000.0) {
-            return m.toNumber().format("%d") + "m";
         }
         return (m / 1000.0).format("%.2f");
     }

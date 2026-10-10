@@ -186,7 +186,7 @@ V1 visual goals:
 1. Black background.
 2. White high-contrast numbers.
 3. Gray secondary labels.
-4. Green separators/accent.
+4. Green separators/accent. (2026-10-07 用户确认改为中性灰 #3A3A3A（v4 设计）；分隔线不再使用绿色。)
 5. HR zone segmented strip near top.
 6. Primary pace value is largest.
 7. Distance is second-largest.

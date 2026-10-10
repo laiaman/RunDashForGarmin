@@ -51,7 +51,7 @@ ls -l bin/RunDash970-fr970.prg
 ./scripts/run-sim.sh
 ```
 
-5. 在模拟器窗口确认圆屏中出现：时间、HR Zone 条/当前 ZONE、HR、CAD、Elapsed/Timer、TOTAL DIST、L/C/A、Lap Time、Lap Distance、BAT；确认没有 PACER 或 PAUSED 文字。
+5. 在模拟器窗口确认圆屏中出现：时间、HR Zone 条和区间胶囊、HR、CAD、Elapsed/Timer、TOTAL DIST、LAP/NOW/AVG 三项配速、单圈时间、单圈距离、电池图标 + 百分比；确认分隔线为中性灰（不是绿色），时钟下方没有横线，没有 PACER 或 PAUSED 文字。
 6. 用 macOS 截图工具截取完整 `CIQ Simulator - Forerunner 970` 窗口，不要只截桌面或编辑器。
 7. 对本轮结果保存为：
 
@@ -103,14 +103,18 @@ ls -l bin/RunDash970-fr970.prg
 | 字段 | 检查内容 |
 |---|---|
 | Current Time | 与手表系统时间一致 |
-| Heart Rate Zone | 彩色五段条出现；当前区间为 `Z1`–`Z5`，无 HR 时为 `ZONE --` |
+| 标签 | 强光和暗光下，HR / CAD / TIME / DIST / LAP / NOW / AVG / km 都能一眼认出，并且不贴到相邻数值或圆屏边缘（v5 方案 A：标签为加粗近白色 `#E0E0E0`，km 为 `#B0B0B0`，时钟为 `#D0D0D0`） |
+| Heart Rate Zone 条 | 五段条出现：当前段全亮色、已经过的段为暗色、未到达的段为灰色；白色三角指向区间内的位置；无 HR 或低于 1.0 时不画三角 |
+| Zone 胶囊 | 胶囊（不是圆圈）位于 HR 与 CAD 之间，填当前区间色，内为黑色 1 位小数（如 `2.9`，截断不四舍五入，最大 `6.0`）；无 HR 时胶囊为灰色，文字为 `-.-`；数字上下留白一致，垂直居中，没有黑色方框底 |
 | Heart Rate | 与手表原生 HR 页面比较 |
 | Cadence | 记录显示数值和原生跑步页面数值 |
 | Elapsed Time / Timer | 开始、暂停、继续后连续且合理 |
-| Battery | 显示 `BAT xx%`；系统电量不可用时显示 `BAT --` |
+| Battery | 电池图标 + `xx%` 整组水平居中，图标内填充宽度随电量变化；系统电量不可用时图标内不填充、文字为 `--`；不低于 50% 为浅灰色（`#B0B0B0`），20–49% 为黄色，低于 20% 为红色（图标和文字同色） |
 | Elapsed / Total Distance | 与原生距离比较，注意 GPS 初始漂移 |
-| Lap Time | 手动计圈后从零开始 |
-| Lap Distance | 手动计圈后从零开始 |
+| Lap Time | 手动计圈后从零开始；格式为 `M:SS`（如 `5:12`、`0:00`、`1:05`），分钟不补零 |
+| Lap Distance | 手动计圈后从零开始；单位 km、两位小数，后面跟浅灰色 `km`（`#B0B0B0`） |
+| 距离格式 | 第 1 公里内总距离和单圈距离显示 `0.85` 这类两位小数，不再出现 `850m`；刚开始时为 `0.00` |
+| 分隔线 | 颜色为中性灰 `#3A3A3A`，时钟下方没有横线；底部只有一条短竖线，不再连到电量 |
 | L Lap Pace | 与原生 Lap Pace 比较 |
 | C Current Pace | 与原生 Current Pace 比较 |
 | A Average Pace | 与原生 Average Pace 比较 |

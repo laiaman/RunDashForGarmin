@@ -1,5 +1,5 @@
 <strings>
-    <string id="AppName">RunDash 970</string>
+    <string id="AppName">RunDash</string>
     <string id="TargetPaceTitle">目标配速（秒/公里）</string>
     <string id="TargetPacePrompt">例如：255 = 4:15/km</string>
     <string id="MaxHeartRateTitle">最大心率（兜底）</string>
