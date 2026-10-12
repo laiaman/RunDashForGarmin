@@ -26,6 +26,17 @@ python3 scripts/test_metrics.py
 ./scripts/run-sim.sh
 ```
 
+测试与单圈修复版构建（2026-10-10）：
+
+```bash
+python3 scripts/test_lap_lifecycle.py && python3 scripts/test_settings_refresh.py
+scripts/run-unit-tests.sh              # Monkey C 单元测试（需先打开 Connect IQ 模拟器）
+./scripts/build-lapfix.sh              # 输出到 bin/lapfix/，不覆盖 bin/RunDash970-fr970.prg
+./scripts/build-lapfix.sh --eventlog   # 事件日志诊断版（仅验证回调用）
+```
+
+真机验收步骤见 [`MANUAL_VALIDATION.md`](MANUAL_VALIDATION.md) §6.1 / §6.2。
+
 隐私政策（可作商店 URL）：[`docs/PRIVACY_POLICY_zh.md`](docs/PRIVACY_POLICY_zh.md) · [English](docs/PRIVACY_POLICY_en.md)
 
 建议商店隐私链接（推送后可用）：

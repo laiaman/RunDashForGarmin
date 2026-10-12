@@ -186,6 +186,16 @@ class RunDash970View extends WatchUi.DataField {
     hidden var LAYOUT_BATTERY_COLOR_UNKNOWN = 0xB0B0B0;
 
     // ═══════════════════════════════════════════════════════════
+    //  配置缓存与临时事件日志
+    // ═══════════════════════════════════════════════════════════
+    // 心率区间“配置边界”（手表用户档案）的周期刷新间隔，仅刷新边界；实时心率与区间显示仍随每次 compute 更新。
+    // 这是本项目的初始策略，不是 Garmin 通用标准：用来兜住“原生运动配置变化没有触发 onSettingsChanged()”的情况。
+    hidden var SETTINGS_ZONE_REFRESH_MS = 60000;
+    // 临时事件日志：仅用于验证回调是否送达 / 是否重复 / 快照时序。正式构建必须为 false。
+    // 诊断版由 scripts/build-lapfix.sh --eventlog 在临时副本里置 true，不修改本文件。
+    hidden var EVENT_LOG = false;
+
+    // ═══════════════════════════════════════════════════════════
     //  运行时数据字段
     // ═══════════════════════════════════════════════════════════
     hidden var mHr = null;
@@ -197,10 +207,14 @@ class RunDash970View extends WatchUi.DataField {
     hidden var mDistanceM = null;          // 累计距离（米）
     hidden var mTimerMs = null;            // 计时器（毫秒）
     hidden var mElapsedMs = null;          // 经过时间（毫秒）
+    // 单圈基线：两个值只通过 setLapBaselineIfValid() / clearLapBaseline() 成对设置/清空。
     hidden var mLapStartDistanceM = null;  // 单圈起始距离
     hidden var mLapStartTimerMs = null;    // 单圈起始时间
+    // true = 基线待建立（新会话，或圈边界快照无效）：单圈显示 "--"，等下一份“时间+距离都有效”的快照成对建立。
+    hidden var mLapBaselinePending = true;
     hidden var mMaxHr = 180;               // 无用户区间时的兜底最大心率
-    hidden var mHrZones = null;            // 手表用户区间 [Z1min..Z5max]，bpm
+    hidden var mHrZones = null;            // 手表用户区间 [Z1min..Z5max]，bpm；经 Metrics.isValidHrZones 校验，null = 走 %HRmax 兜底
+    hidden var mZonesRefreshedMs = null;   // 上次读取区间边界时的 nowMs()；null = 尚未读取
     hidden var mPaused = false;
     hidden var mBatteryText = "--";
     hidden var mBatteryPct = null;         // 0–100，未知为 null（供变色）
@@ -222,43 +236,102 @@ class RunDash970View extends WatchUi.DataField {
 
     function initialize() {
         DataField.initialize();
-        loadSettings();
-        resetLapBaselineFromActivity();
+        // 配置只在初始化 / 活动开始 / 应用设置变化时读取，不再在 compute() 里每帧读取。
+        loadSettings("INIT");
+        // 从当前活动快照成对建立单圈基线；快照无效则进入待初始化，由 compute() 稍后成对建立。
+        updateLapBaseline("INIT", null);
         refreshBattery();
     }
 
-    // 读取 Data Field 兜底最大心率，并刷新手表用户心率区间。
-    function loadSettings() {
-        var maxHr = Properties.getValue("maxHeartRate");
+    // 读取应用属性（兜底最大心率）并立即刷新手表用户心率区间。
+    // 调用时机：初始化、活动开始（onTimerStart）、应用设置变化（reloadSettings）。
+    // 不在 compute() 里调用；也不会改动单圈基线。reason 仅用于诊断日志。
+    function loadSettings(reason) {
+        if (EVENT_LOG) { mDiagSettingsLoads += 1; }
+        var maxHr = readMaxHrProperty();
         if (maxHr != null) {
             var h = maxHr.toNumber();
             if (h != null && h >= 120 && h <= 230) {
                 mMaxHr = h;
             }
         }
-        refreshHrZones();
+        refreshHrZones(reason);
     }
 
-    // 读 Garmin 用户/运动配置的心率区间（bpm）。失败则保持 null，走 %HRmax 兜底。
-    function refreshHrZones() {
-        if (!(UserProfile has :getHeartRateZones)) {
-            mHrZones = null;
-            return;
+    // 应用设置变化：由 RunDash970App.onSettingsChanged() 调用，立即让配置缓存生效（不是只请求重绘）。
+    function reloadSettings() {
+        loadSettings("SETTINGS");
+    }
+
+    // 读 Garmin 用户/运动配置的心率区间（bpm）并校验边界。
+    // 边界无效（或接口不可用）时 mHrZones = null，沿用现有兜底：按设置里的最大心率估区间。
+    function refreshHrZones(reason) {
+        // 先打时间戳：即使这次读取失败，也不会退化成每帧重试。
+        mZonesRefreshedMs = nowMs();
+        if (EVENT_LOG) { mDiagZoneReads += 1; }
+        var zones = null;
+        if (UserProfile has :getHeartRateZones) {
+            var sport = UserProfile.HR_ZONE_SPORT_RUNNING;
+            if (UserProfile has :getCurrentSport) {
+                sport = readCurrentSport();
+            }
+            zones = readHrZones(sport);
+            if (!Metrics.isValidHrZones(zones)) {
+                zones = readHrZones(UserProfile.HR_ZONE_SPORT_GENERIC);
+            }
         }
-        var sport = UserProfile.HR_ZONE_SPORT_RUNNING;
-        if (UserProfile has :getCurrentSport) {
-            sport = UserProfile.getCurrentSport();
-        }
-        var zones = UserProfile.getHeartRateZones(sport);
-        if (zones == null || zones.size() < 6) {
-            zones = UserProfile.getHeartRateZones(UserProfile.HR_ZONE_SPORT_GENERIC);
-        }
-        if (zones != null && zones.size() >= 6
-            && zones[0] != null && zones[5] != null) {
+        if (Metrics.isValidHrZones(zones)) {
             mHrZones = zones;
         } else {
             mHrZones = null;
         }
+        if (EVENT_LOG) { logConfig(reason); }
+    }
+
+    // 区间边界每 60s 才真正读取一次（SETTINGS_ZONE_REFRESH_MS，本项目初始策略）；
+    // 其余每帧只比较一次时间戳，不调用任何配置接口。
+    // 计时器回退（now 小于上次时间戳，如计时器回绕）按过期处理并立即刷新，避免永久使用旧区间。
+    function refreshHrZonesIfDue() {
+        var now = nowMs();
+        if (mZonesRefreshedMs != null) {
+            var age = now - mZonesRefreshedMs;
+            if (age >= 0) {
+                if (age < SETTINGS_ZONE_REFRESH_MS) {
+                    return;
+                }
+                refreshHrZones("PERIODIC");
+            } else {
+                refreshHrZones("ROLLBACK");
+            }
+            return;
+        }
+        refreshHrZones("INIT");
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  外部读取的最小封装
+    //  Properties / UserProfile / 活动快照 / 计时器各只有这一个调用点；
+    //  单元测试通过子类覆盖它们来注入快照、统计调用次数。
+    // ═══════════════════════════════════════════════════════════
+
+    function readActivitySnapshot() {
+        return Activity.getActivityInfo();
+    }
+
+    function readMaxHrProperty() {
+        return Properties.getValue("maxHeartRate");
+    }
+
+    function readCurrentSport() {
+        return UserProfile.getCurrentSport();
+    }
+
+    function readHrZones(sport) {
+        return UserProfile.getHeartRateZones(sport);
+    }
+
+    function nowMs() {
+        return System.getTimer();
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -266,7 +339,7 @@ class RunDash970View extends WatchUi.DataField {
     // ═══════════════════════════════════════════════════════════
 
     function compute(info) {
-        loadSettings();
+        refreshHrZonesIfDue();
         mHr = info.currentHeartRate;
         mAvgHr = info.averageHeartRate;
         mCadence = info.currentCadence;
@@ -277,13 +350,13 @@ class RunDash970View extends WatchUi.DataField {
         mTimerMs = info.timerTime;
         mElapsedMs = info.elapsedTime;
 
-        // 首次有效数据时建立单圈基线
-        if (mLapStartDistanceM == null && mDistanceM != null) {
-            mLapStartDistanceM = mDistanceM;
+        // 单圈基线待建立（新会话 / 圈边界快照无效）：只有这一份快照里时间与距离同时有效才成对建立。
+        // 不再用不同次 compute 分别补齐，也不把未知值当作 0。
+        if (mLapBaselinePending) {
+            var established = setLapBaselineIfValid(mTimerMs, mDistanceM);
+            if (EVENT_LOG && established) { logBaselineEstablished(); }
         }
-        if (mLapStartTimerMs == null && mTimerMs != null) {
-            mLapStartTimerMs = mTimerMs;
-        }
+        if (EVENT_LOG) { logTick(); }
         return null;
     }
 
@@ -722,11 +795,49 @@ class RunDash970View extends WatchUi.DataField {
     //  单圈与活动生命周期
     // ═══════════════════════════════════════════════════════════
 
-    // 从当前活动快照建立单圈基线。
-    function resetLapBaselineFromActivity() {
-        var info = Activity.getActivityInfo();
-        mLapStartDistanceM = info.elapsedDistance;
-        mLapStartTimerMs = info.timerTime;
+    // 用“同一份快照”的时间与距离成对设置单圈基线。任一无效则什么都不改并返回 false。
+    function setLapBaselineIfValid(timerMs, distanceM) {
+        if (!Metrics.isValidLapSnapshot(timerMs, distanceM)) {
+            return false;
+        }
+        mLapStartTimerMs = timerMs;
+        mLapStartDistanceM = distanceM;
+        mLapBaselinePending = false;
+        return true;
+    }
+
+    // 成对清空单圈基线并进入待初始化：单圈三项显示 "--"，不再继续显示旧圈数据。
+    function clearLapBaseline() {
+        mLapStartTimerMs = null;
+        mLapStartDistanceM = null;
+        mLapBaselinePending = true;
+    }
+
+    // 单圈基线的统一更新入口：初始化 / 手动 Lap / 自动 Lap（新旧回调）/ 训练步骤完成 都走这里。
+    // 一次只读一份快照，时间与距离同时取自这份快照：
+    //   - 两者都有效：成对设置新基线。重复通知若拿到相同快照，结果完全相同（天然幂等）；
+    //     没有任何固定时间冷却，连续手动 Lap 每次都会生效。
+    //   - 任一无效  ：成对清空并进入待初始化，不继续显示旧圈数据；之后由 compute() 在第一份
+    //     有效快照上成对建立。计量限制：新圈会从“第一份有效快照”开始累计，边界到该快照之间
+    //     的时间与距离不计入本圈；快照一直无效时单圈保持 "--"，不会用 0 顶替。
+    // source / trigger 仅用于诊断日志。
+    function updateLapBaseline(source, trigger) {
+        var timerMs = null;
+        var distanceM = null;
+        var info = readActivitySnapshot();
+        if (info != null) {
+            timerMs = info.timerTime;
+            distanceM = info.elapsedDistance;
+        }
+        var prevTimerMs = mLapStartTimerMs;
+        var prevDistanceM = mLapStartDistanceM;
+        var valid = setLapBaselineIfValid(timerMs, distanceM);
+        if (!valid) {
+            clearLapBaseline();
+        }
+        if (EVENT_LOG) {
+            logLapBoundary(source, trigger, timerMs, distanceM, valid, prevTimerMs, prevDistanceM);
+        }
     }
 
     function clearActivityState() {
@@ -739,39 +850,153 @@ class RunDash970View extends WatchUi.DataField {
         mDistanceM = null;
         mTimerMs = null;
         mElapsedMs = null;
-        mLapStartDistanceM = null;
-        mLapStartTimerMs = null;
+        clearLapBaseline();
         mPaused = false;
     }
 
+    // 活动开始（含 停止→继续）：刷新相关配置，但不重置单圈基线。
     function onTimerStart() {
         mPaused = false;
+        loadSettings("START");
+        if (EVENT_LOG) { logTimerEvent("START"); }
     }
 
     function onTimerPause() {
         mPaused = true;
+        if (EVENT_LOG) { logTimerEvent("PAUSE"); }
     }
 
     function onTimerResume() {
         mPaused = false;
+        if (EVENT_LOG) { logTimerEvent("RESUME"); }
     }
 
     function onTimerStop() {
         mPaused = true;
+        if (EVENT_LOG) { logTimerEvent("STOP"); }
     }
 
     function onTimerReset() {
         clearActivityState();
+        if (EVENT_LOG) { logTimerEvent("RESET"); }
     }
 
-    // SDK 5.2.2+ 新版计圈回调（返回 true 阻止旧版重复触发）。
+    // SDK 5.2.2+ 新版计圈回调。返回 true = 已处理，系统不会再调用旧版 onTimerLap()（见 DataField 文档）。
     function onTimerLap2(trigger) {
-        resetLapBaselineFromActivity();
+        updateLapBaseline("LAP2", trigger);
         return true;
     }
 
-    // 兼容旧版 SDK 的计圈回调。
+    // 兼容旧版 SDK 的计圈回调（不支持 onTimerLap2 的机型，或 onTimerLap2 返回 false 时）。
     function onTimerLap() {
-        resetLapBaselineFromActivity();
+        updateLapBaseline("LAP", null);
+    }
+
+    // 训练步骤完成（按 Lap 提前完成、按时间/距离自动完成）。
+    // 对应 GRun 的 onWorkoutStepComplete() → 单圈重置；这里接入同一个基线更新入口。
+    // 若真机同一时刻还会触发 Lap 回调，两次更新取到相同快照时结果相同（见 updateLapBaseline）。
+    function onWorkoutStepComplete() {
+        updateLapBaseline("STEP", null);
+    }
+
+    // 训练开始：只记日志，用来还原真机事件顺序；不改单圈基线。
+    function onWorkoutStarted() {
+        if (EVENT_LOG) { logTimerEvent("WORKOUT_STARTED"); }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  临时事件日志（仅验证用；EVENT_LOG = false 时下列函数不会被调用，也不输出任何内容）
+    //  行格式：RDEVT seq=<n> clk=<ms> evt=<类型> key=value ...（便于脚本解析）
+    //  clk = System.getTimer()：区分“同一时刻的重复通知”与“相隔一秒的两次事件”。
+    //  真机上 println 会写入 /GARMIN/APPS/LOGS/<PRG 同名>.TXT（需先手动建同名空文件）。
+    // ═══════════════════════════════════════════════════════════
+
+    hidden var mLogSeq = 0;
+    hidden var mDiagSettingsLoads = 0;   // loadSettings() 实际执行次数（Properties 的唯一调用点）
+    hidden var mDiagZoneReads = 0;       // refreshHrZones() 实际执行次数（UserProfile 的唯一调用点）
+
+    function logValue(v) {
+        if (v == null) {
+            return "null";
+        }
+        return v.toString();
+    }
+
+    function logFlag(b) {
+        return b ? "1" : "0";
+    }
+
+    function logLine(evt, detail) {
+        mLogSeq += 1;
+        System.println("RDEVT seq=" + mLogSeq.toString() + " clk=" + System.getTimer().toString()
+            + " evt=" + evt + " " + detail);
+    }
+
+    function logBaseline() {
+        return logValue(mLapStartTimerMs) + "/" + logValue(mLapStartDistanceM);
+    }
+
+    // 圈边界 / 初始化：回调类型、trigger、同一份快照的 timerTime 与 elapsedDistance、基线前后。
+    // dupSnap=1 表示这次有效快照与上一份基线完全相同（重复通知）。
+    function logLapBoundary(source, trigger, timerMs, distanceM, valid, prevTimerMs, prevDistanceM) {
+        var trig = "-";
+        if (trigger instanceof Dictionary) {
+            trig = logValue(trigger.get(:lapTrigger));
+        }
+        var dup = valid && prevTimerMs != null && prevTimerMs == timerMs && prevDistanceM == distanceM;
+        logLine(source, "trig=" + trig + " t=" + logValue(timerMs) + " d=" + logValue(distanceM)
+            + " valid=" + logFlag(valid) + " dupSnap=" + logFlag(dup)
+            + " base_before=" + logValue(prevTimerMs) + "/" + logValue(prevDistanceM)
+            + " base_after=" + logBaseline() + " pending=" + logFlag(mLapBaselinePending));
+    }
+
+    // 计时器 / 训练开始等事件：当时的快照与基线（不改任何状态）。
+    function logTimerEvent(name) {
+        var timerMs = null;
+        var distanceM = null;
+        var info = readActivitySnapshot();
+        if (info != null) {
+            timerMs = info.timerTime;
+            distanceM = info.elapsedDistance;
+        }
+        logLine(name, "t=" + logValue(timerMs) + " d=" + logValue(distanceM)
+            + " base=" + logBaseline() + " pending=" + logFlag(mLapBaselinePending));
+    }
+
+    function logBaselineEstablished() {
+        logLine("BASELINE", "from=compute base=" + logBaseline() + " pending=" + logFlag(mLapBaselinePending));
+    }
+
+    // 每次 compute 一行：显示用的 timerTime / elapsedDistance、由基线算出的单圈值、配置接口累计调用次数、已用内存。
+    function logTick() {
+        var lapMs = null;
+        var lapM = null;
+        if (mTimerMs != null && mLapStartTimerMs != null) {
+            lapMs = mTimerMs.toNumber() - mLapStartTimerMs.toNumber();
+        }
+        if (mDistanceM != null && mLapStartDistanceM != null) {
+            lapM = mDistanceM.toFloat() - mLapStartDistanceM.toFloat();
+        }
+        var used = System.getSystemStats().usedMemory;
+        logLine("TICK", "t=" + logValue(mTimerMs) + " d=" + logValue(mDistanceM)
+            + " lapMs=" + logValue(lapMs) + " lapM=" + logValue(lapM)
+            + " base=" + logBaseline() + " pending=" + logFlag(mLapBaselinePending)
+            + " cfgLoads=" + mDiagSettingsLoads.toString() + " zoneReads=" + mDiagZoneReads.toString()
+            + " mem=" + used.toString());
+    }
+
+    // 配置读取：原因（INIT / START / SETTINGS / PERIODIC / ROLLBACK）、生效的区间来源、累计调用次数。
+    function logConfig(reason) {
+        var src = "fallback_maxHr";
+        var zones = "-";
+        if (mHrZones != null) {
+            src = "user_zones";
+            var z = mHrZones as Array<Number>;
+            zones = z[0].toString() + "," + z[1].toString() + "," + z[2].toString()
+                + "," + z[3].toString() + "," + z[4].toString() + "," + z[5].toString();
+        }
+        logLine("CFG", "reason=" + reason + " src=" + src + " zones=" + zones + " maxHr=" + mMaxHr.toString()
+            + " cfgLoads=" + mDiagSettingsLoads.toString() + " zoneReads=" + mDiagZoneReads.toString()
+            + " lapBase=" + logBaseline() + " pending=" + logFlag(mLapBaselinePending));
     }
 }

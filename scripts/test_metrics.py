@@ -112,6 +112,50 @@ def format_signed_seconds(seconds):
     return f"{sign}{mins:02d}:{secs:02d}"
 
 
+HR_ZONE_ABS_MAX = 300
+
+
+def is_numeric(value):
+    """镜像 Metrics.isNumeric：Number/Long/Float/Double；null 与其他类型（含 Boolean）都不是数值。"""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def is_finite_number(value):
+    """镜像 Metrics.isFiniteNumber：数值且不是 NaN/±Infinity。
+
+    模拟器 VM 实测 nan >= 0、nan <= 0 都为 true（>= 按 !(a < b) 实现），所以 Monkey C 里不能靠 (x >= 0)
+    拒绝 NaN，改用 (x - x) == 0：有限数得 0；NaN、±Infinity 得 NaN，与 0 比较为 false。
+    """
+    return is_numeric(value) and ((value - value) == 0)
+
+
+def vm_ge(a, b):
+    """模拟器 VM 实测的 >= 语义：!(a < b)（NaN 时为 True）。仅用于证明“朴素写法会放过 NaN”。"""
+    return not (a < b)
+
+
+def is_valid_lap_snapshot(timer_ms, distance_m):
+    """镜像 Metrics.isValidLapSnapshot：时间/距离同一份快照里都是有限数值且不为负；0 是已知值。"""
+    if not is_finite_number(timer_ms) or not is_finite_number(distance_m):
+        return False
+    return not (timer_ms < 0) and not (distance_m < 0)
+
+
+def is_valid_hr_zones(zones):
+    """镜像 Metrics.isValidHrZones：至少 6 个有限数值，都 >= 0、<= 300、严格递增；多余项忽略。"""
+    if not isinstance(zones, (list, tuple)) or len(zones) < 6:
+        return False
+    prev = None
+    for i in range(6):
+        v = zones[i]
+        if not is_finite_number(v) or v < 0 or v > HR_ZONE_ABS_MAX:
+            return False
+        if prev is not None and not (v > prev):
+            return False
+        prev = v
+    return True
+
+
 def hr_zone_value(hr, zones):
     if hr is None or zones is None or len(zones) < 6:
         return None
@@ -276,6 +320,48 @@ def main() -> int:
 
     # Floating cadence-like display path: toNumber truncate semantics
     check("cadence float trunc", int(float(87.6)), 87)
+
+    # 单圈快照校验：时间与距离必须在“同一份快照”里同时有效；未知值不是 0
+    nan = float("nan")
+    inf = float("inf")
+    check("snap ok", is_valid_lap_snapshot(123_456, 987.5), True)
+    check("snap zero is known", is_valid_lap_snapshot(0, 0.0), True)
+    check("snap int distance", is_valid_lap_snapshot(5, 0), True)
+    check("snap null timer", is_valid_lap_snapshot(None, 10.0), False)
+    check("snap null distance", is_valid_lap_snapshot(10, None), False)
+    check("snap both null", is_valid_lap_snapshot(None, None), False)
+    check("snap neg timer", is_valid_lap_snapshot(-1, 10.0), False)
+    check("snap neg distance", is_valid_lap_snapshot(10, -0.5), False)
+    check("snap str", is_valid_lap_snapshot("12", 10.0), False)
+    check("snap bool", is_valid_lap_snapshot(True, 10.0), False)
+    check("snap nan timer", is_valid_lap_snapshot(nan, 10.0), False)
+    check("snap nan distance", is_valid_lap_snapshot(10, nan), False)
+    check("snap inf", is_valid_lap_snapshot(10, inf), False)
+    check("snap -inf", is_valid_lap_snapshot(-inf, 10.0), False)
+    # 朴素的 (x >= 0) 在 VM 语义下会放过 NaN —— 这正是要用有限性检查的原因
+    check("vm nan >= 0 passes naive check", vm_ge(nan, 0), True)
+    check("finite check rejects nan", is_finite_number(nan), False)
+    check("finite check rejects inf", is_finite_number(inf), False)
+    check("finite check accepts big", is_finite_number(2_000_000_000), True)
+
+    # 心率区间边界校验：无效时调用方走现有兜底（%HRmax）
+    check("zones ok", is_valid_hr_zones([100, 120, 140, 160, 175, 190]), True)
+    check("zones extra ignored", is_valid_hr_zones([100, 120, 140, 160, 175, 190, 200]), True)
+    check("zones first zero ok", is_valid_hr_zones([0, 120, 140, 160, 175, 190]), True)
+    check("zones null", is_valid_hr_zones(None), False)
+    check("zones str", is_valid_hr_zones("abc"), False)
+    check("zones short", is_valid_hr_zones([100, 120, 140, 160, 175]), False)
+    check("zones all zero", is_valid_hr_zones([0, 0, 0, 0, 0, 0]), False)
+    check("zones zero mid", is_valid_hr_zones([100, 0, 140, 160, 175, 190]), False)
+    check("zones negative", is_valid_hr_zones([-5, 120, 140, 160, 175, 190]), False)
+    check("zones equal", is_valid_hr_zones([100, 120, 120, 160, 175, 190]), False)
+    check("zones descending", is_valid_hr_zones([100, 120, 110, 160, 175, 190]), False)
+    check("zones too high", is_valid_hr_zones([100, 120, 140, 160, 175, 301]), False)
+    check("zones null item", is_valid_hr_zones([100, 120, None, 160, 175, 190]), False)
+    check("zones str item", is_valid_hr_zones(["100", 120, 140, 160, 175, 190]), False)
+    check("zones nan item", is_valid_hr_zones([nan, 120, 140, 160, 175, 190]), False)
+    check("zones nan mid", is_valid_hr_zones([100, 120, nan, 160, 175, 190]), False)
+    check("zones inf item", is_valid_hr_zones([100, 120, 140, 160, 175, inf]), False)
 
     print(f"PASS: {sys.argv[0]} — all deterministic Metrics mirrors OK")
     return 0

@@ -551,7 +551,9 @@ DEBUG_LAYOUT：true
 
 ## 14. 2026-09-10 Lap 生命周期回归
 
-本轮只修复生命周期，不改变布局坐标。暂停、停止、继续和再次开始都不能移动 Lap 基线；`onTimerStart()` 只更新内部暂停状态。只有首次会话建立基线、真实 `onTimerLap2()`、`onTimerReset()` 或新会话才会改变/清空基线。
+本轮只修复生命周期，不改变布局坐标。暂停、停止、继续和再次开始都不能移动 Lap 基线；只有首次会话建立基线、真实 Lap / 训练步骤完成回调、`onTimerReset()` 或新会话才会改变/清空基线。
+
+> 2026-10-10 更新：`onTimerStart()` 现在除了清除暂停状态，还会立即刷新配置（兜底最大心率、心率区间），但仍然**不会**触碰 Lap 基线；基线的变更入口也统一了，见本文末 §15。
 
 布局调试后可在终端执行：
 
@@ -562,3 +564,25 @@ python3 scripts/test_lap_lifecycle.py
 ```
 
 真机复测时，先记录 Lap Time、Lap Distance、`L` Lap Pace，再执行暂停→继续和停止→继续；两条路径都不得让这三个值归零。按 `LAP` 后才应恰好重置一次。该行为不能仅由布局截图证明。
+
+## 15. 2026-10-10 训练课单圈重置与配置缓存（不改布局）
+
+改动只在 `source/Metrics.mc`、`source/RunDash970App.mc`、`source/RunDash970View.mc` 的非绘制部分；所有 `LAYOUT_*` 常量、字体、颜色、单位与显示精度均未变。以后调布局时请保持下面这些结构：
+
+- **单圈基线只有一个更新入口** `updateLapBaseline(source, trigger)`：初始化、`onTimerLap2()`（仍返回 `true`）、`onTimerLap()`、新增的 `onWorkoutStepComplete()` 都调用它。它一次只读一份活动快照，用 `setLapBaselineIfValid()` 成对设置“单圈起始时间 + 单圈起始距离”；快照无效则 `clearLapBaseline()` 进入待初始化（`mLapBaselinePending`），单圈三项显示 `--`/`--:--`，之后由 `compute()` 在第一份时间与距离都有效的快照上成对建立。**不要**在别处单独给 `mLapStartTimerMs` / `mLapStartDistanceM` 赋值，也不要加固定时间冷却（会吞掉连续手动 Lap）。
+- **配置不再在 `compute()` 里读取**：`loadSettings(reason)` 只在初始化、`onTimerStart()`、`reloadSettings()`（由 `RunDash970App.onSettingsChanged()` 调用）里执行；`compute()` 只调用 `refreshHrZonesIfDue()`，每 `SETTINGS_ZONE_REFRESH_MS`（60000 ms，本项目的初始策略，不是 Garmin 通用标准）才重读一次心率区间边界，计时器回退按过期处理。实时心率与区间显示值仍每次 `compute()`/绘制重新计算。电池缓存与字体缓存未动。
+- **外部读取只有 5 个封装点**：`readActivitySnapshot()`、`readMaxHrProperty()`、`readCurrentSport()`、`readHrZones(sport)`、`nowMs()`。单元测试通过子类覆盖它们；`scripts/test_lap_lifecycle.py` 会检查 `Properties.getValue(` 等 API 在源码里各只出现一次。
+- **临时事件日志** `EVENT_LOG` 默认 `false`，所有日志调用都受它保护；不要在仓库里改成 `true`，诊断版用 `scripts/build-lapfix.sh --eventlog` 在临时副本里生成。
+
+改完后的回归命令（模拟器需先打开）：
+
+```bash
+python3 scripts/test_metrics.py
+python3 scripts/test_lap_lifecycle.py
+python3 scripts/test_settings_refresh.py
+scripts/run-unit-tests.sh              # 25 项 Monkey C 单元测试
+python3 scripts/mutation_check.py      # 可选：变异验证（12 个变异体各编译并跑一遍单元测试，耗时较长）
+./scripts/build-lapfix.sh              # 独立输出到 bin/lapfix/，不覆盖 bin/RunDash970-fr970.prg
+```
+
+模拟器偶尔会卡住（`monkeydo` 没有任何输出）：退出并重开 `ConnectIQ.app` 再试。真机验收清单见 `MANUAL_VALIDATION.md` §6.1 / §6.2。

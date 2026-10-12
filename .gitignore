@@ -10,3 +10,12 @@ bin/
 # Local publishing docs (do not upload)
 docs/PUBLISH_CHECKLIST.md
 docs/STORE_PUBLISHING_CN.md
+
+# WorkBuddy workspace memory (local only)
+.workbuddy/
+
+# Local design review mockups (not for repo)
+docs/design-review/
+
+# Local store assets (not for repo)
+store-assets/
